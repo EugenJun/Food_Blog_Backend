@@ -9,6 +9,7 @@ def create_connection(db_file):
 
     try:
         conn = sqlite3.connect(db_file)
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
     except Error as e:
         print(e)
@@ -31,12 +32,17 @@ def insert_data(conn, data, table_name):
     try:
         c = conn.cursor()
         if table_name == "recipes":
-            for name, descript in data.items():
+            for recipe in data:
                 c.execute(
                     f"INSERT INTO "
                     f"{table_name} ({table_name[:-1] + '_name'}, {table_name[:-1] + '_description'}) VALUES (?, ?);",
-                    (name, descript))
-            conn.commit()
+                    (recipe[0], recipe[1]))
+                conn.commit()
+                sql_get_last_recipe_id = "SELECT * FROM recipes"
+                last_recipe_id = conn.execute(sql_get_last_recipe_id).lastrowid
+                for meal in recipe[2]:
+                    c.execute(f"INSERT INTO serve (meal_id, recipe_id) VALUES (?, ?)", (meal, last_recipe_id))
+                    conn.commit()
         else:
             for item in data:
                 c.execute(f"INSERT INTO {table_name} ({table_name[:-1] + '_name'}) VALUES (?);", (item,))
@@ -53,7 +59,7 @@ def main():
     data = {"meals": ("breakfast", "brunch", "lunch", "supper"),
             "ingredients": ("milk", "cacao", "strawberry", "blueberry", "blackberry", "sugar"),
             "measures": ("ml", "g", "l", "cup", "tbsp", "tsp", "dsp", "")}
-    recipes = {}
+    recipes = []
 
     # sqlite queries to create tables
     sql_create_meals_table = '''CREATE TABLE IF NOT EXISTS meals (
@@ -69,6 +75,12 @@ def main():
                                         recipe_id INTEGER PRIMARY KEY,
                                         recipe_name TEXT NOT NULL,
                                         recipe_description TEXT);'''
+    sql_create_serve_table = '''CREATE TABLE IF NOT EXISTS serve (
+                                    serve_id INTEGER PRIMARY KEY,
+                                    meal_id INTEGER NOT NULL,
+                                    recipe_id INTEGER NOT NULL,
+                                    FOREIGN KEY(meal_id) REFERENCES meals(meal_id),
+                                    FOREIGN KEY(recipe_id) REFERENCES recipes(recipe_id));'''
 
     # create a database connection
     conn = create_connection(database)
@@ -80,6 +92,7 @@ def main():
         create_table(conn, sql_create_ingredients_table)
         create_table(conn, sql_create_measures_table)
         create_table(conn, sql_create_recipes_table)
+        create_table(conn, sql_create_serve_table)
 
         # insert data into tables meals, ingredients, measures
         insert_data(conn, data["meals"], "meals")
@@ -94,7 +107,12 @@ def main():
                 break
             else:
                 recipe_description = input("Recipe description: ")
-                recipes[recipe_name] = recipe_description
+                sql_get_meals = "SELECT * FROM meals"
+                meals = conn.execute(sql_get_meals)
+                for meal in meals:
+                    print(f"{meal[0]}) {meal[1]}", end=" ")
+                meals_to_serve = list(map(int, input("When the dish can be served: ").split(" ")))
+                recipes.append((recipe_name, recipe_description, meals_to_serve))
 
         insert_data(conn, recipes, "recipes")
 
