@@ -46,26 +46,33 @@ class Database:
                 for recipe in data:
                     c.execute(
                         f"INSERT INTO "
-                        f"{table_name} ({table_name[:-1] + '_name'}, {table_name[:-1] + '_description'}) VALUES (?, ?);",
-                        (recipe[0], recipe[1]))
-                    self.conn.commit()
+                        f"{table_name} ({table_name[:-1] + '_name'}, {table_name[:-1] + '_description'}) "
+                        f"VALUES (?, ?);", (recipe[0], recipe[1]))
                     last_recipe_id = c.lastrowid
+                    for quantity in recipe[3]:
+                        c.execute(
+                            f"INSERT INTO quantity (quantity, recipe_id, measure_id, ingredient_id) "
+                            f"VALUES (?, ?, ?, ?)", (quantity[0], last_recipe_id, quantity[1][0], quantity[1][1]))
                     for meal in recipe[2]:
                         c.execute(f"INSERT INTO serve (meal_id, recipe_id) VALUES (?, ?)", (meal, last_recipe_id))
-                        self.conn.commit()
-            elif table_name == "quantity":
-                for quantity in data:
-                    c.execute("SELECT COUNT(*) FROM recipes")
-                    last_rec_id = c.fetchone()
-                    c.execute(
-                        f"INSERT INTO quantity (quantity, recipe_id, measure_id, ingredient_id) VALUES (?, ?, ?, ?)",
-                        (quantity[0], last_rec_id[0], quantity[1][0], quantity[1][1]))
-                    self.conn.commit()
             else:
                 for item in data:
-                    c.execute(f"INSERT INTO {table_name} ({table_name[:-1] + '_name'}) VALUES (?);", (item,))
-                self.conn.commit()
+                    c.execute(f"INSERT OR IGNORE INTO {table_name} ({table_name[:-1] + '_name'}) VALUES (?);", (item,))
         except Error as e:
             print(e)
 
         self.conn.commit()
+
+    def get_recipes_by_ingredients_and_meals(self, ingredients, meals):
+        """Return the recipes that include asked ingredients and meals"""
+        c = self.conn.cursor()
+        c.execute(
+            f"SELECT r.recipe_name FROM recipes r LEFT JOIN quantity q ON r.recipe_id = q.recipe_id "
+            f"JOIN ingredients i ON i.ingredient_id = q.ingredient_id "
+            f"WHERE ingredient_name IN ({','.join(repr(ingredient) for ingredient in ingredients)}) "
+            f"GROUP BY r.recipe_id, recipe_name HAVING COUNT(r.recipe_id) > {len(ingredients) - 1} "
+            f"AND r.recipe_name IN "
+            f"( SELECT r.recipe_name FROM recipes r LEFT JOIN serve s ON r.recipe_id = s.recipe_id "
+            f"JOIN meals m ON m.meal_id = s.meal_id WHERE meal_name IN ({','.join(repr(meal) for meal in meals)}) "
+            f"GROUP BY r.recipe_id, r.recipe_name HAVING COUNT(r.recipe_id) > 0);")
+        return c.fetchall()
