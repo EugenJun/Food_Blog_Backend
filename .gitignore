@@ -1,0 +1,17 @@
+# course config files
+*.yaml
+
+# gradle
+.gradle/
+build
+
+
+# idea config
+.idea
+
+# old stages
+/Food Blog Backend/*
+!/Food Blog Backend/task/
+/Food Blog Backend/task/*
+!/Food Blog Backend/task/database.py
+!/Food Blog Backend/task/blog.py
